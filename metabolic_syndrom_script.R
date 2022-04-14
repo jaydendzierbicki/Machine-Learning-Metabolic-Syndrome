@@ -20,12 +20,33 @@ set.seed(234)
 # Implement first model - naive, LDA, QDA
 # Implement second model - PCA
 # Implement third model - Kmeans clustering
+
+
+
+# https://www.frontiersin.org/articles/10.3389/fmed.2021.626580/full
+# Similair studies have applied LDA/NB & Logstic regression to similair studies
+# Based on other studies some important variables required to predict Mets are:
+# WC, BMI, Obesity, DBp, SBp, Creatinine, Sex, UA, T_Billirbimum, Albumin, Escore
+# CAPScore, TG, rGT, ALKp, GPT, GOT, HbA1C, GlucoseC, AFP, BUN, Age, TSH, HDL, 
+# MDRD, Cholesterol and LDL
+
+# The above could suggest that categorical varibles such as income, maritial statues
+# do not play a risk
+
+# https://www.cdc.gov/pcd/issues/2017/16_0287.htm#:~:text=When%20stratified%20by%20race%2Fethnicity,%E2%80%932012%20(Figure%202).
+# The above study found that metabolic syndrom has increased amongts non-hispanic white women
+# non-hispanic black women and people of low socioeconomic status
+
+# The above suggests that we could also probably use Race and Income in our model(s)
+# if assumptions allowed them to be included.
+
 #===============================================================================
 
 
 
 #===============================================================================
 # DATA PREP - overal
+#
 #===============================================================================
 
 metabolic_df <- read.csv("metabolic.csv")
@@ -41,7 +62,7 @@ sum(is.na(metabolic_df)) # We have 436 varibles missing
 sapply(metabolic_df, function(x) sum(is.na(x))) # Column wise summary of null values
 
 #===============================================================================
-# Data Imputation 
+# IMPUTATION
 # https://towardsdatascience.com/7-ways-to-handle-missing-values-in-machine-learning-1a6326adf79e 
 # There are serveral methods we can employ to deal with various missing data 
 # Martial: We will imputate maritial if NULL -> unkown
@@ -59,7 +80,7 @@ metabolic_df$Marital[is.na(metabolic_df$Marital)] <- "Unkown"
 metabolic_df_ni <- metabolic_df # Retain DF without k-means
 
 #===============================================================================
-# Impute missing values 
+# IMPUTATION
 # Income / Waist Circumfrance / BMI
 #===============================================================================
 
@@ -80,7 +101,7 @@ metabolic_df$BMI <- imputed_data$BMI
 sapply(metabolic_df, function(x) sum(is.na(x))) # Confrim imputation worked
 
 #===============================================================================
-# Overall data coercion 
+# DATA TRANSFOMRATION
 # Ensure data is of correct type
 #===============================================================================
 
@@ -91,12 +112,102 @@ metabolic_df <- metabolic_df %>%
          Marital = as.factor(Marital),
          Race = as.factor(Race),
          MetabolicSyndrome = as.factor(MetabolicSyndrome),
-         Income = as.integer(Income),
+         Income = (as.integer(Income)),
          WaistCirc = as.integer(WaistCirc),
          BMI = as.integer(BMI),
          UrAlbCr = as.integer(UrAlbCr),
          UricAcid = as.integer(UricAcid))
 str(metabolic_df) # All varibles are now printing correctly
+
+
+#===============================================================================
+# DATA EXPLORATION
+# Box plots
+#===============================================================================
+library(ggplot2)
+# Look for outliers
+
+(age_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=Age)) +
+  geom_boxplot() ) # Different between groups
+
+(income_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=Income)) +
+    geom_boxplot() ) # Different between groups
+
+(waist_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=WaistCirc)) +
+    geom_boxplot() ) # Different between groups
+
+(bmi_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=BMI)) +
+    geom_boxplot() ) # Different between gorups
+
+(urAlbCr_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=UrAlbCr)) +
+    geom_boxplot() ) # Unable to gain any insight from this varible - transformation?
+
+(uric_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=UricAcid)) +
+    geom_boxplot() ) # Almost identical distribution - DROP - refer to literature, we do see some outliers on higher end of MS & longer whisker on bottom end of no metsynd
+
+(blood_glucos_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=BloodGlucose)) +
+    geom_boxplot() ) # Lot of outliers
+
+(hdl_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=HDL)) +
+    geom_boxplot() ) # Higher in those without metabolic syndrome (good cholesterol )
+
+(tri_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=Triglycerides)) +
+    geom_boxplot() ) # Higher in those without metabolic syndrome 
+
+
+# Based on the boxplot the following transformation was conducted]
+metabolic_df <- metabolic_df %>% 
+  mutate(UrAlbCr = log(as.integer(UrAlbCr)))
+(uric_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=UricAcid)) +
+    geom_boxplot() ) # Can now see almost identical distrubtion
+
+
+barplot(prop.table(table(metabolic_df$Race)))
+barplot((table(metabolic_df$Race)))
+# We observe that a large portion of our data is: White, Black & Asian
+# We are unsure the ethenicity of other, and since accounts for <10% of data
+# we elected to remove it
+
+barplot(prop.table(table(metabolic_df$Sex))) # Almost identical 50/50 gender split
+barplot((table(metabolic_df$Sex)))
+
+barplot(prop.table(table(metabolic_df$Marital))) # Most maried/single
+barplot((table(metabolic_df$Marital)))
+# Previous studies have shown that relationship status can influence health status
+# https://pubmed.ncbi.nlm.nih.gov/29976034/
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6166117/#:~:text=%5B6%5D%20have%20reported%20that%20women,physical%20and%20psychological%20support%2C%20especially
+
+barplot(prop.table(table(metabolic_df$Albuminuria))) # Unsure what 0,1 & 2 refer to, might have to drop this variable if no data
+barplot((table(metabolic_df$Albuminuria)))           # dict can be found - limitation of study and source data
+
+
+barplot(prop.table(table(metabolic_df$MetabolicSyndrome)))# Unbalanced data
+barplot((table(metabolic_df$MetabolicSyndrome))) 
+#===============================================================================
+# REMOVE/CREATE VARS
+# Since we do not know what other stands for we will remove it, also accounts
+# for less then 10% of all observations
+#===============================================================================
+
+
+n_row_initial <- nrow(metabolic_df)
+
+metabolic_df <- metabolic_df %>% 
+  filter(Race != "Other") 
+
+n_row_filter <- nrow(metabolic_df)
+total_removed = n_row_initial - n_row_filter # 61 observations lost
+
+
+#===============================================================================
+# DATA EXPLOR SUMMARY
+# Based on exploration of data we observe most varibles have a clear difference
+# between those with MS and those without. Some identified issues:
+# Remove: Race (Other)
+# Remove Column: Unsure what Albuinuria refers to - possible limitation - will review litrature to decide
+# Transfomration: log UrAlbCr
+# Unbalanced data: Metabolic syndrom unbalance - approx 800 MetSyn and approx 1540 No MetSyn
+#===============================================================================
 
 #===============================================================================
 # Supervised data prep 
@@ -219,6 +330,43 @@ roc_kernal <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_gf)) # 
 
 
 
+#===============================================================================
+# KNN Supervised learning 
+#===============================================================================
+
+metabolic_df_knn <- metabolic_df_supervised %>% 
+  select(-seqn, - MetabolicSyndrome)
+
+diagnosis <- metabolic_df_supervised$MetabolicSyndrome
+
+dummy_vars_knn <- dummyVars(~ ., data = metabolic_df_knn)
+train_dummy_knn <- predict(dummy_vars_knn, metabolic_df_knn)
+train_dummy_knn <- as.data.frame(train_dummy_knn)
+train_dummy_knn <- cbind(train_dummy_knn, diagnosis)
+
+
+train_dummy_knn$diagnosis <- ifelse(train_dummy_knn$diagnosis == "No MetSyn", 0 , 1)
+
+
+metabolic_df_knn_norm <- preProcess(train_dummy_knn[,1:24], method = c("scale", "center")) # Scale all vars except predictor
+metabolic_df_knn_ST <- predict(metabolic_df_knn_norm, train_dummy_knn[,1:24])
+summary(metabolic_df_knn_ST)
+
+# Train our model
+knn_label <- train_dummy_knn$diagnosis
+split <- createDataPartition(knn_label, p=0.8, list = F)
+knn_train <- train_dummy_knn[split,]
+knn_test <- train_dummy_knn[-split,]
+knn_label <- knn_train$diagnosis
+
+library(class)
+knn3_class <- knn(knn_train, knn_test, knn_label, k=4)
+accuracy <- function(predictions, ground_truth){
+  mean(predictions == ground_truth)
+}
+accuracy(knn3_class, train_dummy_knn$diagnosis)
+
+
 
 #===============================================================================
 # UNSUPERVISED 
@@ -257,7 +405,7 @@ summary(pca) # Summary PC values
 PVE <- round((pca$sdev^2)/sum(pca$sdev^2), 2)
 
 # Scree Plot
-par(mfrow = c(1,2))
+par(mfrow = c(1,1))
 plot(PVE, xlab = "Principal Component", ylab = "Prop of variance Explained", type = "b", ylim = c(0,1))
 # Shows prop of variance explained cumualaivte of each PCA as we go through list
 plot(cumsum(PVE), xlab = "Principal component", ylab = "cummulative prop of variance Explained", type = "b")
@@ -348,31 +496,3 @@ cont_table_kmeans <- table(table$diagnosis, table$cluster)
 
 
 ################################ DELETE ? 
-
-#===============================================================================
-# KNN Supervised learning 
-#===============================================================================
-
-metabolic_df_knn <- metabolic_df_supervised %>% 
-  select(-seqn, - Sex, -Marital, - Race)
-
-metabolic_df_knn$MetabolicSyndrome <- ifelse(metabolic_df_knn$MetabolicSyndrome == "No MetSyn", 0 , 1)
-
-
-metabolic_df_knn_norm <- preProcess(metabolic_df_knn[,1:10], method = c("scale", "center")) # Scale all vars except predictor
-metabolic_df_knn_ST <- predict(metabolic_df_knn_norm, metabolic_df_knn[,1:10])
-summary(metabolic_df_knn_ST)
-
-# Train our model
-knn_label <- metabolic_df_knn$MetabolicSyndrome
-split <- createDataPartition(knn_label, p=0.8, list = F)
-knn_train <- metabolic_df_knn[split,]
-knn_test <- metabolic_df_knn[-split,]
-knn_label <- knn_train$MetabolicSyndrome
-
-library(class)
-knn3_class <- knn(knn_train, knn_test, knn_label, k=500)
-accuracy <- function(predictions, ground_truth){
-  mean(predictions == ground_truth)
-}
-accuracy(knn3_class, metabolic_df_knn$MetabolicSyndrome)
