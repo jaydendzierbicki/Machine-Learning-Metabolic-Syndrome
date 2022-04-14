@@ -20,9 +20,13 @@ set.seed(234)
 # Implement first model - naive, LDA, QDA
 # Implement second model - PCA
 # Implement third model - Kmeans clustering
+#===============================================================================
 
 
-# DATA PREP=====================================================================
+
+#===============================================================================
+# DATA PREP - overal
+#===============================================================================
 
 metabolic_df <- read.csv("metabolic.csv")
 
@@ -36,12 +40,14 @@ sum(is.na(metabolic_df)) # We have 436 varibles missing
 
 sapply(metabolic_df, function(x) sum(is.na(x))) # Column wise summary of null values
 
-# Data Imputation ==============================================================
+#===============================================================================
+# Data Imputation 
 # https://towardsdatascience.com/7-ways-to-handle-missing-values-in-machine-learning-1a6326adf79e 
 # There are serveral methods we can employ to deal with various missing data 
 # Martial: We will imputate maritial if NULL -> unkown
 # Income: Utilise VIM package kNN()
 # Waist Circumstance: Utilise VIM package kNN()
+#===============================================================================
 
 metabolic_df$Marital[is.na(metabolic_df$Marital)] <- "Unkown"
 
@@ -51,25 +57,58 @@ metabolic_df$Marital[is.na(metabolic_df$Marital)] <- "Unkown"
 # !!!
 
 metabolic_df_ni <- metabolic_df # Retain DF without k-means
-metabolic_df <- kNN(metabolic_df, imp_var = F) # Default k = 5, retain imputation flag
 
-# Overall data coercion =========================================================
+#===============================================================================
+# Impute missing values 
+# Income / Waist Circumfrance / BMI
+#===============================================================================
+
+library(caret) # For imputation
+imput_df <- metabolic_df %>% 
+  select(-seqn, -MetabolicSyndrome)
+
+dummy_vars <- dummyVars(~ ., data = imput_df)
+train_dummy <- predict(dummy_vars, imput_df)
+
+pre_process <- preProcess(train_dummy, method = "bagImpute")
+imputed_data <- as.data.frame(predict(pre_process, train_dummy))
+
+
+metabolic_df$Income <- imputed_data$Income
+metabolic_df$WaistCirc <- imputed_data$WaistCirc
+metabolic_df$BMI <- imputed_data$BMI
+sapply(metabolic_df, function(x) sum(is.na(x))) # Confrim imputation worked
+
+#===============================================================================
+# Overall data coercion 
 # Ensure data is of correct type
+#===============================================================================
+
 str(metabolic_df) # We observe many factor varibles are of type character 
 
 metabolic_df <- metabolic_df %>% 
   mutate(Sex = as.factor(Sex),
          Marital = as.factor(Marital),
          Race = as.factor(Race),
-         MetabolicSyndrome = as.factor(MetabolicSyndrome))
+         MetabolicSyndrome = as.factor(MetabolicSyndrome),
+         Income = as.integer(Income),
+         WaistCirc = as.integer(WaistCirc),
+         BMI = as.integer(BMI),
+         UrAlbCr = as.integer(UrAlbCr),
+         UricAcid = as.integer(UricAcid))
 str(metabolic_df) # All varibles are now printing correctly
 
-# Supervised data prep =========================================================
+#===============================================================================
+# Supervised data prep 
+#===============================================================================
 metabolic_df_supervised <- metabolic_df
 
-# Unsupervised data prep =======================================================
+#===============================================================================
+# Unsupervised data prep
 # For our unsupervised learning method we will only select continuous varibles, at this
 # stage we will retain seqn and metabolic syndrom status
+#===============================================================================
+
 metabolic_df_unsupervised <- metabolic_df %>% 
   select(seqn,
          MetabolicSyndrome,
@@ -90,15 +129,14 @@ metabolic_df_unsupervised <- metabolic_df %>%
 
 
 
+#===============================================================================
+#
+# SUPERVISED LEARNING 
+#
+#===============================================================================
 
-
-
-# SUPERVISED LEARNING ==========================================================
-
-
-
-
-# Assumption testing ===========================================================
+#===============================================================================
+# Assumption testing 
 # Will look at the following and pick the one that has best assumptions
 # Naive Bayes
 # LDA
@@ -106,10 +144,14 @@ metabolic_df_unsupervised <- metabolic_df %>%
 # Logistic
 # K-means
 # Logit
+#===============================================================================
 
 library(caret) # used to split data
 
-# NAIVE BAYES ==================================================================
+#===============================================================================
+# NAIVE BAYES 
+#===============================================================================
+
 metabolic_df_supervised_nb <- metabolic_df_supervised %>% 
   select(-seqn)
 split_nb <- createDataPartition(metabolic_df_supervised_nb$MetabolicSyndrome, p = 0.8, list = F)
@@ -162,37 +204,39 @@ library(pROC)
 roc_gaussian <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_g)) # AUC 0.7264
 roc_kernal <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_gf)) # AUC 0.7526
 
-################################################################################
+#===============================================================================
 # NAIVE BAYES DISC
 # We observe that our assumptions have been violated, such as conditional independence 
 # amongst predictor variables, though Naive bayes can handle this generally 
 # We observe that our data is not Gausian Distrubtion - as such we can apply
 # a non-paramatric feture in the naivebayes() function - this resulted in a 
 # improved model, both in accuracy and AUC
-################################################################################
+#===============================================================================
+
+#===============================================================================
+# Cross Validation Naive Bayes
+#===============================================================================
 
 
 
 
-
-
-
-
-# UNSUPERVISED =================================================================
+#===============================================================================
+# UNSUPERVISED 
 # Will explore the following topics
 # 1 - PCA unsupervised & the benefits
 # 2 - K-means clustering
+#===============================================================================
 
 
 
 
 
-
-# PCA UNSUPERVISED =============================================================
+#===============================================================================
+# PCA UNSUPERVISED 
 # 
 # Will utilise PCA to reduce dimensionality of our data and apply it to our
 # clustering technique
-################################################################################
+#===============================================================================
 
 # Remove seqn and MetabolicSyndrom
 metabolic_df_unsupervised_pca <- metabolic_df_unsupervised %>% 
@@ -237,14 +281,16 @@ loading_pc2 <- abs(pca$rotation[,2])
 print(head(sort(loading_pc1, decreasing = T)))
 print(head(sort(loading_pc2, decreasing = T)))
 
-################################################################################
+#===============================================================================
 # What the loading tells us is the most impact a var has on the PC
 # PCA1: WaistCirc > BMI > BMI > UricAcid > Trig > BloodGlucose
 # PCA2: Age > UrAlCr > Blood Glucose > HDL > BMI > Waist Circ
-################################################################################
+#===============================================================================
 
+#===============================================================================
+# K-means clustering
+#===============================================================================
 
-# K-means clustering ===========================================================
 metabolic_df_unsupervised_clustering <- pca$x[,1:2] # Select first 2 PC
 metabolic_df_unsupervised_clustering <- as.data.frame(cbind(metabolic_df_unsupervised_clustering, diagnosis)) # MetSyn = 1, NO METSYN = 0
 k2 <- kmeans(metabolic_df_unsupervised_clustering[1:2], centers = 2, nstart = 25)
@@ -259,7 +305,74 @@ table <- metabolic_df_unsupervised_clustering %>%
 cont_table_kmeans <- table(table$diagnosis, table$cluster)
 (accuracy_kmeans <- sum(diag(cont_table_kmeans)/sum(cont_table_kmeans)))
 
-################################################################################
+#===============================================================================
 # Obtained accuracy of 77% via unsupervised k-means clustering with PCA
 # This is on par with supervised method
-################################################################################
+#===============================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+################################ DELETE ? 
+
+#===============================================================================
+# KNN Supervised learning 
+#===============================================================================
+
+metabolic_df_knn <- metabolic_df_supervised %>% 
+  select(-seqn, - Sex, -Marital, - Race)
+
+metabolic_df_knn$MetabolicSyndrome <- ifelse(metabolic_df_knn$MetabolicSyndrome == "No MetSyn", 0 , 1)
+
+
+metabolic_df_knn_norm <- preProcess(metabolic_df_knn[,1:10], method = c("scale", "center")) # Scale all vars except predictor
+metabolic_df_knn_ST <- predict(metabolic_df_knn_norm, metabolic_df_knn[,1:10])
+summary(metabolic_df_knn_ST)
+
+# Train our model
+knn_label <- metabolic_df_knn$MetabolicSyndrome
+split <- createDataPartition(knn_label, p=0.8, list = F)
+knn_train <- metabolic_df_knn[split,]
+knn_test <- metabolic_df_knn[-split,]
+knn_label <- knn_train$MetabolicSyndrome
+
+library(class)
+knn3_class <- knn(knn_train, knn_test, knn_label, k=500)
+accuracy <- function(predictions, ground_truth){
+  mean(predictions == ground_truth)
+}
+accuracy(knn3_class, metabolic_df_knn$MetabolicSyndrome)
