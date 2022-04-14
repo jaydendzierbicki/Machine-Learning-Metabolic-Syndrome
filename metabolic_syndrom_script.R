@@ -43,19 +43,27 @@ sapply(metabolic_df, function(x) sum(is.na(x))) # Column wise summary of null va
 # Income: Utilise VIM package kNN()
 # Waist Circumstance: Utilise VIM package kNN()
 
-
 metabolic_df$Marital[is.na(metabolic_df$Marital)] <- "Unkown"
 
+# !!!
 # There are some issues with imputation and machine learning, as such we
-# will make two df, one removing the remidning NA values and one containg
-# imuptated values 
+# will need to include this in disscusion section of paper
+# !!!
 
 metabolic_df_ni <- metabolic_df # Retain DF without k-means
 metabolic_df <- kNN(metabolic_df, imp_var = T) # Default k = 5, retain imputation flag
 
+
+
+
+
+
 # Overall data coercion =========================================================
 # Ensure data is of correct type
 str(metabolic_df) # We observe many factor varibles are of type character 
+
+
+
 
 
 # For our unsupervised learning method we will only select continuous varibles, at this
