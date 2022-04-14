@@ -170,3 +170,96 @@ roc_kernal <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_gf)) # 
 # a non-paramatric feture in the naivebayes() function - this resulted in a 
 # improved model, both in accuracy and AUC
 ################################################################################
+
+
+
+
+
+
+
+
+# UNSUPERVISED =================================================================
+# Will explore the following topics
+# 1 - PCA unsupervised & the benefits
+# 2 - K-means clustering
+
+
+
+
+
+
+# PCA UNSUPERVISED =============================================================
+# 
+# Will utilise PCA to reduce dimensionality of our data and apply it to our
+# clustering technique
+################################################################################
+
+# Remove seqn and MetabolicSyndrom
+metabolic_df_unsupervised_pca <- metabolic_df_unsupervised %>% 
+  select(-seqn, -MetabolicSyndrome)
+
+# Scale as units are diff measurements/values
+metabolic_df_unsupervised_pca <- as.data.frame(scale(metabolic_df_unsupervised_pca))
+#metabolic_df_unsupervised_pca <- as.data.frame((metabolic_df_unsupervised_pca))
+
+
+
+summary(metabolic_df_unsupervised_pca) # Confrim scaled
+diagnosis <- as.numeric(metabolic_df_unsupervised$MetabolicSyndrome == "MetSyn") # MetSyn = 1, NO METSYN = 0
+
+# Commence PCA and obtain some info
+pca <- prcomp(metabolic_df_unsupervised_pca, scale = F) # Already scaled
+summary(pca) # Summary PC values
+PVE <- round((pca$sdev^2)/sum(pca$sdev^2), 2)
+
+# Scree Plot
+par(mfrow = c(1,2))
+plot(PVE, xlab = "Principal Component", ylab = "Prop of variance Explained", type = "b", ylim = c(0,1))
+# Shows prop of variance explained cumualaivte of each PCA as we go through list
+plot(cumsum(PVE), xlab = "Principal component", ylab = "cummulative prop of variance Explained", type = "b")
+
+# Elbow method select PC values for model
+library(factoextra)
+fviz_eig(pca) # Select first 2 PC values for our model
+
+# Show visually our model - we can see some speration between our model
+library(pca3d)
+pca2d(pca, group = diagnosis)
+
+pca_3d_graph <- pca3d(pca, group=diagnosis, show.ellipses=TRUE,
+                      ellipse.ci=0.95, show.plane=FALSE, legend = "topleft")
+
+
+
+# What varibles contribute most to our PCA model?
+loading_pc1 <- abs(pca$rotation[,1])
+loading_pc2 <- abs(pca$rotation[,2])
+print(head(sort(loading_pc1, decreasing = T)))
+print(head(sort(loading_pc2, decreasing = T)))
+
+################################################################################
+# What the loading tells us is the most impact a var has on the PC
+# PCA1: WaistCirc > BMI > BMI > UricAcid > Trig > BloodGlucose
+# PCA2: Age > UrAlCr > Blood Glucose > HDL > BMI > Waist Circ
+################################################################################
+
+
+# K-means clustering ===========================================================
+metabolic_df_unsupervised_clustering <- pca$x[,1:2] # Select first 2 PC
+metabolic_df_unsupervised_clustering <- as.data.frame(cbind(metabolic_df_unsupervised_clustering, diagnosis)) # MetSyn = 1, NO METSYN = 0
+k2 <- kmeans(metabolic_df_unsupervised_clustering[1:2], centers = 2, nstart = 25)
+
+metabolic_df_unsupervised_clustering$cluster <- factor(k2$cluster)
+
+# Produce table
+table <- metabolic_df_unsupervised_clustering %>% 
+  mutate(diagnosis = case_when(diagnosis == 1 ~ "MetSyn",
+                               diagnosis == 0 ~ "No MetSyn"))
+
+cont_table_kmeans <- table(table$diagnosis, table$cluster)
+(accuracy_kmeans <- sum(diag(cont_table_kmeans)/sum(cont_table_kmeans)))
+
+################################################################################
+# Obtained accuracy of 77% via unsupervised k-means clustering with PCA
+# This is on par with supervised method
+################################################################################
