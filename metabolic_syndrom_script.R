@@ -178,7 +178,8 @@ barplot((table(metabolic_df$Marital)))
 # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6166117/#:~:text=%5B6%5D%20have%20reported%20that%20women,physical%20and%20psychological%20support%2C%20especially
 
 barplot(prop.table(table(metabolic_df$Albuminuria))) # Unsure what 0,1 & 2 refer to, might have to drop this variable if no data
-barplot((table(metabolic_df$Albuminuria)))           # dict can be found - limitation of study and source data
+barplot((table(metabolic_df$Albuminuria)))           # dict can be found - limitation of study and source data.
+                                                     # Though, most obseervations are classed as 0 and could result in noise in our model
 
 
 barplot(prop.table(table(metabolic_df$MetabolicSyndrome)))# Unbalanced data
@@ -193,10 +194,14 @@ barplot((table(metabolic_df$MetabolicSyndrome)))
 n_row_initial <- nrow(metabolic_df)
 
 metabolic_df <- metabolic_df %>% 
-  filter(Race != "Other") 
+  filter(Race != "Other") %>% 
+  filter(Marital !=  "Unkown") %>% 
+  select(-Albuminuria) %>% 
+  unique() # Remove any duplicated rows - none detected anyhow
 
 n_row_filter <- nrow(metabolic_df)
 total_removed = n_row_initial - n_row_filter # 61 observations lost
+
 
 
 #===============================================================================
@@ -221,7 +226,7 @@ metabolic_df_supervised <- metabolic_df
 #===============================================================================
 
 metabolic_df_unsupervised <- metabolic_df %>% 
-  select(seqn,
+  select(#seqn,
          MetabolicSyndrome,
          Age,
          Income,
@@ -280,11 +285,12 @@ pairs.panels(metabolic_df_supervised_nb)
 # !!! We observe some varibles are correlated to one another - violation !!!
 
 # DATA DISTRUBTUION - Gaussian Distribution 
-par(mfrow=c(3,2))
+par(mfrow=c(2,2))
 hist(metabolic_df$Age) # Not normal
 hist(metabolic_df$Income) # Not normal
 hist(metabolic_df$Triglycerides) # Skewed left
 hist(metabolic_df$BloodGlucose) # Not normal
+par(mfrow=c(1,1)) # Reset
 
 # !!! We observe does not follow Gaussian Distrubtion, set kernel  = T
 
@@ -313,7 +319,7 @@ confusionMatrix(pred_gf, test_nb$MetabolicSyndrome)
 # NAIVE BAYES AURO
 library(pROC)
 roc_gaussian <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_g)) # AUC 0.7264
-roc_kernal <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_gf)) # AUC 0.7526
+roc_kernal <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_gf)) # AUC 0.7526 (0.8336)
 
 #===============================================================================
 # NAIVE BAYES DISC
@@ -388,7 +394,7 @@ accuracy(knn3_class, train_dummy_knn$diagnosis)
 
 # Remove seqn and MetabolicSyndrom
 metabolic_df_unsupervised_pca <- metabolic_df_unsupervised %>% 
-  select(-seqn, -MetabolicSyndrome)
+  select( -MetabolicSyndrome)
 
 # Scale as units are diff measurements/values
 metabolic_df_unsupervised_pca <- as.data.frame(scale(metabolic_df_unsupervised_pca))
@@ -412,7 +418,7 @@ plot(cumsum(PVE), xlab = "Principal component", ylab = "cummulative prop of vari
 
 # Elbow method select PC values for model
 library(factoextra)
-fviz_eig(pca) # Select first 2 PC values for our model
+fviz_eig(pca) # Select first 3 PC values for our model
 
 # Show visually our model - we can see some speration between our model
 library(pca3d)
@@ -431,8 +437,8 @@ print(head(sort(loading_pc2, decreasing = T)))
 
 #===============================================================================
 # What the loading tells us is the most impact a var has on the PC
-# PCA1: WaistCirc > BMI > BMI > UricAcid > Trig > BloodGlucose
-# PCA2: Age > UrAlCr > Blood Glucose > HDL > BMI > Waist Circ
+# PCA1: WaistCirc > BMI > HD: > Tri > Blood Gluc > UricAcid
+# PCA2: UrAlbCr > Age > Blood Glucose > HDL > BMI > Income
 #===============================================================================
 
 #===============================================================================
@@ -441,7 +447,7 @@ print(head(sort(loading_pc2, decreasing = T)))
 
 metabolic_df_unsupervised_clustering <- pca$x[,1:2] # Select first 2 PC
 metabolic_df_unsupervised_clustering <- as.data.frame(cbind(metabolic_df_unsupervised_clustering, diagnosis)) # MetSyn = 1, NO METSYN = 0
-k2 <- kmeans(metabolic_df_unsupervised_clustering[1:2], centers = 2, nstart = 25)
+k2 <- kmeans(metabolic_df_unsupervised_clustering[1:2], centers = 2, nstart = 25) # We know k=2 domain knowledge
 
 metabolic_df_unsupervised_clustering$cluster <- factor(k2$cluster)
 
@@ -450,7 +456,7 @@ table <- metabolic_df_unsupervised_clustering %>%
   mutate(diagnosis = case_when(diagnosis == 1 ~ "MetSyn",
                                diagnosis == 0 ~ "No MetSyn"))
 
-cont_table_kmeans <- table(table$diagnosis, table$cluster)
+cont_table_kmeans <- (table(table$diagnosis, table$cluster))
 (accuracy_kmeans <- sum(diag(cont_table_kmeans)/sum(cont_table_kmeans)))
 
 #===============================================================================
@@ -492,7 +498,3 @@ cont_table_kmeans <- table(table$diagnosis, table$cluster)
 
 
 
-
-
-
-################################ DELETE ? 
