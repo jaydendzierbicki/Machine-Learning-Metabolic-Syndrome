@@ -70,7 +70,7 @@ sapply(metabolic_df, function(x) sum(is.na(x))) # Column wise summary of null va
 # Waist Circumstance: Utilise VIM package kNN()
 #===============================================================================
 
-metabolic_df$Marital[is.na(metabolic_df$Marital)] <- "Unkown"
+metabolic_df$Marital[is.na(metabolic_df$Marital)] <- "unknown"
 
 # !!!
 # There are some issues with imputation and machine learning, as such we
@@ -86,7 +86,7 @@ metabolic_df_ni <- metabolic_df # Retain DF without k-means
 
 library(caret) # For imputation
 imput_df <- metabolic_df %>% 
-  select(-seqn, -MetabolicSyndrome)
+  select(-seqn , -MetabolicSyndrome)
 
 dummy_vars <- dummyVars(~ ., data = imput_df)
 train_dummy <- predict(dummy_vars, imput_df)
@@ -154,6 +154,9 @@ library(ggplot2)
 (tri_boxplot <- ggplot(metabolic_df, aes(x=MetabolicSyndrome, y=Triglycerides)) +
     geom_boxplot() ) # Higher in those without metabolic syndrome 
 
+library(grid)
+library(gridExtra)
+grid.arrange(age_boxplot, income_boxplot, waist_boxplot, bmi_boxplot, urAlbCr_boxplot, uric_boxplot, blood_glucos_boxplot, hdl_boxplot, tri_boxplot)
 
 # Based on the boxplot the following transformation was conducted]
 metabolic_df <- metabolic_df %>% 
@@ -162,28 +165,35 @@ metabolic_df <- metabolic_df %>%
     geom_boxplot() ) # Can now see almost identical distrubtion
 
 
-barplot(prop.table(table(metabolic_df$Race)))
-barplot((table(metabolic_df$Race)))
+(race_bar <- ggplot(metabolic_df, aes(x=Race)) +
+    geom_bar() ) 
 # We observe that a large portion of our data is: White, Black & Asian
 # We are unsure the ethenicity of other, and since accounts for <10% of data
 # we elected to remove it
 
-barplot(prop.table(table(metabolic_df$Sex))) # Almost identical 50/50 gender split
-barplot((table(metabolic_df$Sex)))
+(sex_bar <- ggplot(metabolic_df, aes(x=Sex)) +
+    geom_bar() ) 
 
-barplot(prop.table(table(metabolic_df$Marital))) # Most maried/single
-barplot((table(metabolic_df$Marital)))
+
+(relo_bar <- ggplot(metabolic_df, aes(x=Marital)) +
+    geom_bar() ) 
 # Previous studies have shown that relationship status can influence health status
 # https://pubmed.ncbi.nlm.nih.gov/29976034/
 # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6166117/#:~:text=%5B6%5D%20have%20reported%20that%20women,physical%20and%20psychological%20support%2C%20especially
 
-barplot(prop.table(table(metabolic_df$Albuminuria))) # Unsure what 0,1 & 2 refer to, might have to drop this variable if no data
-barplot((table(metabolic_df$Albuminuria)))           # dict can be found - limitation of study and source data.
-                                                     # Though, most obseervations are classed as 0 and could result in noise in our model
+
+(alb_bar <- ggplot(metabolic_df, aes(x=Albuminuria)) +
+    geom_bar() ) 
+# Unsure what 0,1 & 2 refer to, might have to drop this variable if no data
+# dict can be found - limitation of study and source data.
+# Though, most obseervations are classed as 0 and could result in noise in our model
 
 
-barplot(prop.table(table(metabolic_df$MetabolicSyndrome)))# Unbalanced data
-barplot((table(metabolic_df$MetabolicSyndrome))) 
+(ms_bar <- ggplot(metabolic_df, aes(x=MetabolicSyndrome)) +
+    geom_bar() ) 
+
+grid.arrange(race_bar, sex_bar, relo_bar, alb_bar, ms_bar)
+
 #===============================================================================
 # REMOVE/CREATE VARS
 # Since we do not know what other stands for we will remove it, also accounts
@@ -195,7 +205,7 @@ n_row_initial <- nrow(metabolic_df)
 
 metabolic_df <- metabolic_df %>% 
   filter(Race != "Other") %>% 
-  filter(Marital !=  "Unkown") %>% 
+  filter(Marital !=  "unknown") %>% 
   select(-Albuminuria) %>% 
   unique() # Remove any duplicated rows - none detected anyhow
 
@@ -270,6 +280,12 @@ library(caret) # used to split data
 
 metabolic_df_supervised_nb <- metabolic_df_supervised %>% 
   select(-seqn)
+
+library(psych)
+pairs.panels(metabolic_df_supervised_nb[,-13]) # Observe  cor feature <- assumption violation
+
+
+
 split_nb <- createDataPartition(metabolic_df_supervised_nb$MetabolicSyndrome, p = 0.8, list = F)
 train_nb <- metabolic_df_supervised_nb[split, ]
 test_nb <- metabolic_df_supervised_nb[-split, ]
@@ -320,6 +336,44 @@ confusionMatrix(pred_gf, test_nb$MetabolicSyndrome)
 library(pROC)
 roc_gaussian <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_g)) # AUC 0.7264
 roc_kernal <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_gf)) # AUC 0.7526 (0.8336)
+
+
+# NAIVE BAYES REDUCED FETURES===================================================
+# At this stage we elect to remove waist circumstance to see if it improves our model and
+# to ensure all assumptions are satisfied 
+
+
+metabolic_df_supervised_nb <- metabolic_df_supervised %>% 
+  select(-seqn)
+
+metabolic_df_supervised_nb_2 <- metabolic_df_supervised_nb %>% 
+  select(-BMI, -HDL)
+
+split_nb_2 <- createDataPartition(metabolic_df_supervised_nb_2$MetabolicSyndrome, p = 0.8, list = F)
+train_nb_2 <- metabolic_df_supervised_nb_2[split, ]
+test_nb_2 <- metabolic_df_supervised_nb_2[-split, ]
+c(nrow(train_nb_2), nrow(test_nb_2)) 
+
+# Produce models
+nb_g_2 <- naive_bayes(MetabolicSyndrome ~ ., data = train_nb_2, usekernel = F)
+nb_gf_2 <- naive_bayes(MetabolicSyndrome ~ ., data = train_nb_2, usekernel = T)
+
+# Produce confusion matrix
+pred_g_2 <- predict(nb_g_2, newdata = test_nb_2)
+confusionMatrix(pred_g_2, test_nb_2$MetabolicSyndrome)
+
+pred_gf_2 <- predict(nb_gf_2, newdata = test_nb_2)
+confusionMatrix(pred_gf_2, test_nb_2$MetabolicSyndrome)
+
+(roc_gaussian_2 <- roc(as.numeric(test_nb_2$MetabolicSyndrome), as.numeric(pred_g_2))) # AUC 0.7569
+(roc_kernal_2 <- roc(as.numeric(test_nb_2$MetabolicSyndrome), as.numeric(pred_gf_2))) # AUC 0.8167 
+
+# Findings: 
+# AUC 0.85 remove BMI
+# AUC 0.82 remove waist cir
+# AUC 0.85 remove HDL
+# AUC 0.82 remove Tri
+# AUC 0.85 remove BMI and HDL
 
 #===============================================================================
 # NAIVE BAYES DISC
