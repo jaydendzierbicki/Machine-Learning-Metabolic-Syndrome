@@ -1,7 +1,9 @@
 # Install library===============================================================
 library(dplyr)
 library(VIM) # Used for imputation
-
+library(MASS)
+library(class)
+library(klaR)
 
 # Set seed for reproducability - arbitrarily selected
 set.seed(234)
@@ -224,6 +226,7 @@ total_removed = n_row_initial - n_row_filter # 61 observations lost
 # Unbalanced data: Metabolic syndrom unbalance - approx 800 MetSyn and approx 1540 No MetSyn
 #===============================================================================
 
+
 #===============================================================================
 # Supervised data prep 
 #===============================================================================
@@ -252,6 +255,35 @@ metabolic_df_unsupervised <- metabolic_df %>%
 # a scaling algorithm prior to completing PCA analysis 
 
 
+#===============================================================================
+# Testing significance 
+# We elected to use a non parametric test as we know from previous steps that our data
+# has many outliers, normality is often violated etc.
+# For numerical varibles we elected to do a Two sample Wilcoxon test for independent samples
+#===============================================================================
+
+
+metabolic_df_sig <- metabolic_df %>% 
+  select(-seqn)
+
+# For p less then 0.05 we find evidence to support that varible is different between
+# metabolic syndrome status 
+age_zw <- wilcox.test(Age ~ MetabolicSyndrome, data = metabolic_df_sig, alternative="two.sided",mu=0) # P < 0.05
+income_zw <- wilcox.test(Income ~ MetabolicSyndrome, data = metabolic_df_sig, alternative="two.sided",mu=0) # P< 0.05
+waist_zw <- wilcox.test(WaistCirc ~ MetabolicSyndrome, data = metabolic_df_sig, alternative="two.sided",mu=0) # P < 0.05
+BMI_zw <- wilcox.test(BMI ~ MetabolicSyndrome, data = metabolic_df_sig, alternative="two.sided",mu=0) # P < 0.05
+uric_a_zw <- wilcox.test(UricAcid ~ MetabolicSyndrome, data = metabolic_df_sig, alternative="two.sided",mu=0) # P < 0.05
+glucose_zw <- wilcox.test(BloodGlucose ~ MetabolicSyndrome, data = metabolic_df_sig, alternative="two.sided",mu=0) # P < 0.05
+HDL_zw <- wilcox.test(HDL ~ MetabolicSyndrome, data = metabolic_df_sig, alternative="two.sided",mu=0) # P < 0.05
+tri_zw <- wilcox.test(Triglycerides ~ MetabolicSyndrome, data = metabolic_df_sig, alternative="two.sided",mu=0) # P < 0.05
+
+
+# For categorical varibles we elected to do chi sqaure test
+# Ho Two vars independent of one another in relation to MS status
+# H1 Two vars are related to one another
+chisq.test(y= metabolic_df_sig$MetabolicSyndrome, x=metabolic_df_sig$Sex) # P 0.351 - reject H1
+chisq.test(y= metabolic_df_sig$MetabolicSyndrome, x=metabolic_df_sig$Marital) # P < 0.05 - reject H0
+chisq.test(y= metabolic_df_sig$MetabolicSyndrome, x=metabolic_df_sig$Race) # P < 0.05 - reject H0
 
 
 
@@ -259,23 +291,13 @@ metabolic_df_unsupervised <- metabolic_df %>%
 #
 # SUPERVISED LEARNING 
 #
-#===============================================================================
-
-#===============================================================================
-# Assumption testing 
-# Will look at the following and pick the one that has best assumptions
-# Naive Bayes
-# LDA
-# QDA
-# Logistic
-# K-means
-# Logit
+# Naive Bayes - 4 different models
 #===============================================================================
 
 library(caret) # used to split data
 
 #===============================================================================
-# NAIVE BAYES 
+# NAIVE BAYES: Model 1 & 2
 #===============================================================================
 
 metabolic_df_supervised_nb <- metabolic_df_supervised %>% 
@@ -287,8 +309,8 @@ pairs.panels(metabolic_df_supervised_nb[,-13]) # Observe  cor feature <- assumpt
 
 
 split_nb <- createDataPartition(metabolic_df_supervised_nb$MetabolicSyndrome, p = 0.8, list = F)
-train_nb <- metabolic_df_supervised_nb[split, ]
-test_nb <- metabolic_df_supervised_nb[-split, ]
+train_nb <- metabolic_df_supervised_nb[split_nb, ]
+test_nb <- metabolic_df_supervised_nb[-split_nb, ]
 c(nrow(train_nb), nrow(test_nb)) # 1922 TRAIN, 479 TEST
 
 # Check balance of data
@@ -338,7 +360,10 @@ roc_gaussian <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_g)) #
 roc_kernal <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_gf)) # AUC 0.7526 (0.8336)
 
 
-# NAIVE BAYES REDUCED FETURES===================================================
+#===============================================================================
+# NAIVE BAYES: Model 3
+# Note we only use the non-gausian distribution in the report
+#===============================================================================
 # At this stage we elect to remove waist circumstance to see if it improves our model and
 # to ensure all assumptions are satisfied 
 
@@ -347,16 +372,18 @@ metabolic_df_supervised_nb <- metabolic_df_supervised %>%
   select(-seqn)
 
 metabolic_df_supervised_nb_2 <- metabolic_df_supervised_nb %>% 
-  select(-BMI, -HDL)
+  select(-BMI)
 
 split_nb_2 <- createDataPartition(metabolic_df_supervised_nb_2$MetabolicSyndrome, p = 0.8, list = F)
-train_nb_2 <- metabolic_df_supervised_nb_2[split, ]
-test_nb_2 <- metabolic_df_supervised_nb_2[-split, ]
+train_nb_2 <- metabolic_df_supervised_nb_2[split_nb_2, ]
+test_nb_2 <- metabolic_df_supervised_nb_2[-split_nb_2, ]
 c(nrow(train_nb_2), nrow(test_nb_2)) 
 
 # Produce models
 nb_g_2 <- naive_bayes(MetabolicSyndrome ~ ., data = train_nb_2, usekernel = F)
 nb_gf_2 <- naive_bayes(MetabolicSyndrome ~ ., data = train_nb_2, usekernel = T)
+
+
 
 # Produce confusion matrix
 pred_g_2 <- predict(nb_g_2, newdata = test_nb_2)
@@ -364,6 +391,7 @@ confusionMatrix(pred_g_2, test_nb_2$MetabolicSyndrome)
 
 pred_gf_2 <- predict(nb_gf_2, newdata = test_nb_2)
 confusionMatrix(pred_gf_2, test_nb_2$MetabolicSyndrome)
+
 
 (roc_gaussian_2 <- roc(as.numeric(test_nb_2$MetabolicSyndrome), as.numeric(pred_g_2))) # AUC 0.7569
 (roc_kernal_2 <- roc(as.numeric(test_nb_2$MetabolicSyndrome), as.numeric(pred_gf_2))) # AUC 0.8167 
@@ -375,6 +403,7 @@ confusionMatrix(pred_gf_2, test_nb_2$MetabolicSyndrome)
 # AUC 0.82 remove Tri
 # AUC 0.85 remove BMI and HDL
 
+
 #===============================================================================
 # NAIVE BAYES DISC
 # We observe that our assumptions have been violated, such as conditional independence 
@@ -384,55 +413,103 @@ confusionMatrix(pred_gf_2, test_nb_2$MetabolicSyndrome)
 # improved model, both in accuracy and AUC
 #===============================================================================
 
-#===============================================================================
-# Cross Validation Naive Bayes
-#===============================================================================
+
 
 
 
 #===============================================================================
-# KNN Supervised learning 
+# logit Supervised learning 
+# We retain BMI
+# We test assumptions last - we will only test assumption on best
+# performing model 
 #===============================================================================
 
-metabolic_df_knn <- metabolic_df_supervised %>% 
+# Convert categorical variables into dummy variables
+metabolic_df_logit <- metabolic_df_supervised %>% 
   select(-seqn, - MetabolicSyndrome)
 
 diagnosis <- metabolic_df_supervised$MetabolicSyndrome
 
-dummy_vars_knn <- dummyVars(~ ., data = metabolic_df_knn)
-train_dummy_knn <- predict(dummy_vars_knn, metabolic_df_knn)
-train_dummy_knn <- as.data.frame(train_dummy_knn)
-train_dummy_knn <- cbind(train_dummy_knn, diagnosis)
+dummy_vars_logit <- dummyVars(~ ., data = metabolic_df_logit)
+train_dummy_logit <- predict(dummy_vars_logit, metabolic_df_logit)
+train_dummy_logit <- as.data.frame(train_dummy_logit)
+train_dummy_logit <- cbind(train_dummy_logit, diagnosis)
+
+# Bind diagnosis back to data frame with dummy varibles
+#train_dummy_logit$diagnosis <- ifelse(train_dummy_logit$diagnosis == "No MetSyn", 0 , 1)
+train_dummy_logit$diagnosis <- train_dummy_logit$diagnosis
+str(train_dummy_logit)
+
+# Convert variables to factor level
+sum(train_dummy_logit$Marital.unknown) # 0, must be stored as memory as removed
+sum(train_dummy_logit$Race.Other) # , must be stored as memory as removed before
+
+train_dummy_logit <- train_dummy_logit %>% 
+  mutate(Sex.Female = as.factor(Sex.Female),
+         Sex.Male = as.factor(Sex.Male),
+         Marital.Divorced = as.factor(Marital.Divorced),
+         Marital.Married = as.factor(Marital.Married),
+         Marital.Separated = as.factor(Marital.Separated),
+         Marital.Single = as.factor(Marital.Single),
+         Marital.Widowed = as.factor(Marital.Widowed),
+         Race.Asian = as.factor(Race.Asian),
+         Race.Black = as.factor(Race.Black),
+         Race.Hispanic = as.factor(Race.Hispanic),
+         Race.MexAmerican = as.factor(Race.MexAmerican),
+         Race.White = as.factor(Race.White),
+         diagnosis = as.factor(diagnosis)) %>% 
+  select(-Marital.unknown, -Race.Other)
+str(train_dummy_logit)
+
+# Our data frame is now in the required format, we have set our binary dummy varibles to factors with 2 level
+# and all other data types are correct
+# !! We do assumption testing after our model is developed !!
+# The only main assumption to test first is that our response (diagnosis) is binary, which it has been converted
+
+split_logit <- createDataPartition(train_dummy_logit$diagnosis, p=0.8, list = F)
+train_logit <- train_dummy_logit[split_logit, ]
+test_logit <- train_dummy_logit[-split_logit, ]
+c(nrow(train_logit), nrow(test_logit))
+
+# Basic logit model #############################################################!!!!!!!!!!!!!
+logit_fit <- glm(diagnosis ~ ., data = train_logit,
+                 family = binomial(link = "logit"))
+pred_logit <- predict(logit_fit, newdata = test_logit, type = "link")
+confusionMatrix(pred_logit, test_logit$diagnosis)
+# Basic logit model #############################################################!!!!!!!!!!!!!!
+
+# Cross validation: Leave one out cross validation
+ctrl <- trainControl(method = "LOOCV")
+logit_fit_loocv <- train(diagnosis ~ ., data = train_logit,
+                         method = "glm",
+                         family = "binomial",
+                         trControl = ctrl)
+
+pred_loocv <- predict(logit_fit_loocv, newdata = test_logit)
+confusionMatrix(pred_loocv, test_logit$diagnosis)
+
+roc_loocv <- roc(as.numeric(test_logit$diagnosis), as.numeric(pred_loocv))
+auc(roc_loocv)
 
 
-train_dummy_knn$diagnosis <- ifelse(train_dummy_knn$diagnosis == "No MetSyn", 0 , 1)
 
+# Cross-Validation: K-fold cross validation
+ctrl <- trainControl(method = "repeatedcv", number = 10,
+                     savePredictions = TRUE, repeats = 5)
+logit_fit_cv <- train(diagnosis ~ ., data = train_logit,
+                      method = "glm",
+                      family = "binomial",
+                      trControl = ctrl)
+print(logit_fit_cv)
+pred_cv <- predict(logit_fit_cv, newdata = test_logit)
+confusionMatrix(pred_cv, test_logit$diagnosis)
 
-metabolic_df_knn_norm <- preProcess(train_dummy_knn[,1:24], method = c("scale", "center")) # Scale all vars except predictor
-metabolic_df_knn_ST <- predict(metabolic_df_knn_norm, train_dummy_knn[,1:24])
-summary(metabolic_df_knn_ST)
-
-# Train our model
-knn_label <- train_dummy_knn$diagnosis
-split <- createDataPartition(knn_label, p=0.8, list = F)
-knn_train <- train_dummy_knn[split,]
-knn_test <- train_dummy_knn[-split,]
-knn_label <- knn_train$diagnosis
-
-library(class)
-knn3_class <- knn(knn_train, knn_test, knn_label, k=4)
-accuracy <- function(predictions, ground_truth){
-  mean(predictions == ground_truth)
-}
-accuracy(knn3_class, train_dummy_knn$diagnosis)
-
-
+roc_cv <- roc(as.numeric(test_logit$diagnosis), as.numeric(pred_cv))
+auc(roc_cv)
 
 #===============================================================================
-# UNSUPERVISED 
-# Will explore the following topics
-# 1 - PCA unsupervised & the benefits
-# 2 - K-means clustering
+# Based on the intial logit models we observe that we might have an issue 
+# with unblanced nature impacting our model
 #===============================================================================
 
 
