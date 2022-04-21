@@ -471,12 +471,26 @@ train_logit <- train_dummy_logit[split_logit, ]
 test_logit <- train_dummy_logit[-split_logit, ]
 c(nrow(train_logit), nrow(test_logit))
 
-# Basic logit model #############################################################!!!!!!!!!!!!!
+#===============================================================================
+# LOGIT MODEL: Basic
+#===============================================================================
 logit_fit <- glm(diagnosis ~ ., data = train_logit,
                  family = binomial(link = "logit"))
-pred_logit <- predict(logit_fit, newdata = test_logit, type = "link")
-confusionMatrix(pred_logit, test_logit$diagnosis)
-# Basic logit model #############################################################!!!!!!!!!!!!!!
+
+logs_odd_ratio <- predict(logit_fit, newdata = test_logit, type = "link")
+proba <- predict(logit_fit, newdata = test_logit, type = "response")
+pred_on_lodds <- ifelse(logs_odd_ratio > 0, "MetSyn", "No MetSyn")
+pred_on_proba <- ifelse(proba > 0.5, "MetSyn", "No MetSyn")
+all(pred_on_lodds == pred_on_proba)
+confusionMatrix(as.factor(pred_on_proba), test_logit$diagnosis)
+
+roc_basic <- roc(as.numeric(test_logit$diagnosis), as.numeric(as.factor(pred_on_proba)))
+auc(roc_basic) # Terrible confusion matrix
+
+
+#===============================================================================
+# LOGIT MODEL: Leave one out
+#===============================================================================
 
 # Cross validation: Leave one out cross validation
 ctrl <- trainControl(method = "LOOCV")
@@ -489,11 +503,13 @@ pred_loocv <- predict(logit_fit_loocv, newdata = test_logit)
 confusionMatrix(pred_loocv, test_logit$diagnosis)
 
 roc_loocv <- roc(as.numeric(test_logit$diagnosis), as.numeric(pred_loocv))
-auc(roc_loocv)
+auc(roc_loocv) # 0.84
 
 
 
-# Cross-Validation: K-fold cross validation
+#===============================================================================
+# LOGIT MODEL: Cross Validation 10-fold
+#===============================================================================
 ctrl <- trainControl(method = "repeatedcv", number = 10,
                      savePredictions = TRUE, repeats = 5)
 logit_fit_cv <- train(diagnosis ~ ., data = train_logit,
@@ -505,13 +521,45 @@ pred_cv <- predict(logit_fit_cv, newdata = test_logit)
 confusionMatrix(pred_cv, test_logit$diagnosis)
 
 roc_cv <- roc(as.numeric(test_logit$diagnosis), as.numeric(pred_cv))
-auc(roc_cv)
+auc(roc_cv) # 0.84
 
 #===============================================================================
 # Based on the intial logit models we observe that we might have an issue 
-# with unblanced nature impacting our model
+# with unblanced nature impacting our model - we will now compare and contrast
+# by including smote into our model
+# Could not find ROSE used in the context of health science. 
+#
+# Based on confusion matrix we observe LOOCV had best outcome, thus we will
+# see if we can improve it by accounting for an unblaanced data set
 #===============================================================================
 
+#===============================================================================
+# LOGIT MODEL: Leave one out - SMOTE applied
+#===============================================================================
+
+ctrl <- trainControl(method = "LOOCV", sampling = "smote")
+logit_fit_loocv_smote <- train(diagnosis ~ ., data = train_logit,
+                         method = "glm",
+                         family = "binomial",
+                         trControl = ctrl)
+
+pred_loocv_smote <- predict(logit_fit_loocv_smote, newdata = test_logit)
+confusionMatrix(pred_loocv_smote, test_logit$diagnosis)
+
+roc_loocv_smote <- roc(as.numeric(test_logit$diagnosis), as.numeric(pred_loocv_smote))
+auc(roc_loocv_smote) # 0.8383
+
+#===============================================================================
+# FINDINGS: 
+# We find when we apply the SMOTE method for LOOCV that we have an increase
+# in false positives - this results in a reduction in our AUC slightly
+# though, we have an increase by 0.10 in sensitivity and a 0.9 reduction in
+# specificity - we also have a reduction in accuracy in our model.
+# This is because our model has a reduction in original biased towards no met 
+# syndrome.
+# For the purpose of health applications we want to maxmimise sensitivity 
+# as failure to do so can lead to delayed treatment
+#===============================================================================
 
 
 
