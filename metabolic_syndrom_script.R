@@ -1,12 +1,16 @@
 # Install library===============================================================
-library(dplyr)
+
 library(VIM) # Used for imputation
 library(MASS)
 library(class)
-library(klaR)
+#library(klaR)
+library(dplyr)
+library(pROC)
 
 # Set seed for reproducability - arbitrarily selected
-set.seed(234)
+set.seed(2343)
+
+
 #===============================================================================
 # Utilise various machine learning methods, both supervised and unsuperivsed
 # to predict onces change of having metabolic syndrom; OR if metabolic syndrom
@@ -88,7 +92,7 @@ metabolic_df_ni <- metabolic_df # Retain DF without k-means
 
 library(caret) # For imputation
 imput_df <- metabolic_df %>% 
-  select(-seqn , -MetabolicSyndrome)
+  dplyr::select(-seqn  , -MetabolicSyndrome)
 
 dummy_vars <- dummyVars(~ ., data = imput_df)
 train_dummy <- predict(dummy_vars, imput_df)
@@ -299,7 +303,7 @@ library(caret) # used to split data
 #===============================================================================
 # NAIVE BAYES: Model 1 & 2
 #===============================================================================
-
+set.seed(2343)
 metabolic_df_supervised_nb <- metabolic_df_supervised %>% 
   select(-seqn)
 
@@ -368,15 +372,18 @@ roc_kernal <- roc(as.numeric(test_nb$MetabolicSyndrome), as.numeric(pred_gf)) # 
 # to ensure all assumptions are satisfied 
 
 
-metabolic_df_supervised_nb <- metabolic_df_supervised %>% 
-  select(-seqn)
+#metabolic_df_supervised_nb <- metabolic_df_supervised %>% 
+#  select(-seqn)
 
-metabolic_df_supervised_nb_2 <- metabolic_df_supervised_nb %>% 
+#metabolic_df_supervised_nb_2 <- metabolic_df_supervised_nb %>% 
+#  select(-BMI)
+
+#split_nb_2 <- createDataPartition(metabolic_df_supervised_nb_2$MetabolicSyndrome, p = 0.8, list = F)
+train_nb_2 <- train_nb %>% 
+  select(-BMI)
+test_nb_2 <- test_nb %>% 
   select(-BMI)
 
-split_nb_2 <- createDataPartition(metabolic_df_supervised_nb_2$MetabolicSyndrome, p = 0.8, list = F)
-train_nb_2 <- metabolic_df_supervised_nb_2[split_nb_2, ]
-test_nb_2 <- metabolic_df_supervised_nb_2[-split_nb_2, ]
 c(nrow(train_nb_2), nrow(test_nb_2)) 
 
 # Produce models
@@ -413,8 +420,22 @@ confusionMatrix(pred_gf_2, test_nb_2$MetabolicSyndrome)
 # improved model, both in accuracy and AUC
 #===============================================================================
 
+#===============================================================================
+# NAIVE BAYES: Model 4
+# Attempt to improve our model we use 10-fold cross validation and SMOTE
+#===============================================================================
 
+ctrl <- trainControl(sampling = "smote")
+nb_cv_smote <- train(MetabolicSyndrome ~ ., data = train_nb_2,
+                               method = "nb",
+                               trControl = ctrl)
 
+print(nb_cv_smote)
+pred_cv_smote <- predict(nb_cv_smote, newdata = test_nb_2)
+confusionMatrix(pred_cv_smote, test_nb_2$MetabolicSyndrome)
+
+roc_cv_smote <- roc(as.numeric(test_nb_2$MetabolicSyndrome), as.numeric(pred_cv_smote))
+auc(roc_cv_smote) # 0.8221
 
 
 #===============================================================================
@@ -423,7 +444,7 @@ confusionMatrix(pred_gf_2, test_nb_2$MetabolicSyndrome)
 # We test assumptions last - we will only test assumption on best
 # performing model 
 #===============================================================================
-
+set.seed(2343) # Ensure when you run model we run all of it with sed seed, otherwise it will not work if you do it in chunks.
 # Convert categorical variables into dummy variables
 metabolic_df_logit <- metabolic_df_supervised %>% 
   select(-seqn, - MetabolicSyndrome)
@@ -547,7 +568,7 @@ pred_loocv_smote <- predict(logit_fit_loocv_smote, newdata = test_logit)
 confusionMatrix(pred_loocv_smote, test_logit$diagnosis)
 
 roc_loocv_smote <- roc(as.numeric(test_logit$diagnosis), as.numeric(pred_loocv_smote))
-auc(roc_loocv_smote) # 0.8383
+auc(roc_loocv_smote) # 0.8277
 
 #===============================================================================
 # FINDINGS: 
