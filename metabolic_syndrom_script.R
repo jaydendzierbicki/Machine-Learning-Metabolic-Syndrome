@@ -445,6 +445,7 @@ auc(roc_cv_smote) # 0.8221
 # performing model 
 #===============================================================================
 set.seed(2343) # Ensure when you run model we run all of it with sed seed, otherwise it will not work if you do it in chunks.
+library(caret)
 # Convert categorical variables into dummy variables
 metabolic_df_logit <- metabolic_df_supervised %>% 
   select(-seqn, - MetabolicSyndrome)
@@ -491,6 +492,7 @@ split_logit <- createDataPartition(train_dummy_logit$diagnosis, p=0.8, list = F)
 train_logit <- train_dummy_logit[split_logit, ]
 test_logit <- train_dummy_logit[-split_logit, ]
 c(nrow(train_logit), nrow(test_logit))
+
 
 #===============================================================================
 # LOGIT MODEL: Basic
@@ -558,6 +560,7 @@ auc(roc_cv) # 0.84
 # LOGIT MODEL: Leave one out - SMOTE applied
 #===============================================================================
 
+
 ctrl <- trainControl(method = "LOOCV", sampling = "smote")
 logit_fit_loocv_smote <- train(diagnosis ~ ., data = train_logit,
                          method = "glm",
@@ -568,7 +571,7 @@ pred_loocv_smote <- predict(logit_fit_loocv_smote, newdata = test_logit)
 confusionMatrix(pred_loocv_smote, test_logit$diagnosis)
 
 roc_loocv_smote <- roc(as.numeric(test_logit$diagnosis), as.numeric(pred_loocv_smote))
-auc(roc_loocv_smote) # 0.8277
+auc(roc_loocv_smote)
 
 #===============================================================================
 # FINDINGS: 
@@ -582,8 +585,105 @@ auc(roc_loocv_smote) # 0.8277
 # as failure to do so can lead to delayed treatment
 #===============================================================================
 
+#===============================================================================
+# Logit assumption testing
+#===============================================================================
+
+#===============================================================================
+# Multicollinearity test
+#===============================================================================
+
+library(car)
+vif(logit_fit_loocv_smote$finalModel) # Produces error
 
 
+# VIF error suggests we have perfect multi-collinearity in our model due to error type
+# https://stats.stackexchange.com/questions/495702/r-dealing-with-new-aliased-coefficient-na-coefficient-in-categorical-varia
+summary(logit_fit_loocv_smote)
+
+# We observe that our dummy variables are cuasing perfect multicolinearity 
+# Sex.Male
+# Marital.Widow
+# Race.White
+
+# To overcome this issue we create a new subsset of test/train by removing those
+# observations and re-running our model with the reduced test/train data frame
+# all else held constent - thus producing a 5th model essentially - this is because
+# when the others are equal to 0 it is implied that they are either male, widows or white
+
+
+train_logit_2 <- train_logit %>% 
+  select(-Sex.Male, -Marital.Widowed, -Race.White)
+
+test_logit_2 <- test_logit %>% 
+  select(-Sex.Male, -Marital.Widowed, -Race.White)
+
+ctrl <- trainControl(method = "LOOCV", sampling = "smote")
+logit_fit_loocv_smote_2 <- train(diagnosis ~ ., data = train_logit_2,
+                               method = "glm",
+                               family = "binomial",
+                               trControl = ctrl)
+
+pred_loocv_smote_2 <- predict(logit_fit_loocv_smote_2, newdata = test_logit_2)
+confusionMatrix(pred_loocv_smote_2, test_logit_2$diagnosis)
+
+roc_loocv_smote_2 <- roc(as.numeric(test_logit_2$diagnosis), as.numeric(pred_loocv_smote_2))
+auc(roc_loocv_smote_2)
+
+vif(logit_fit_loocv_smote_2$finalModel) # Multicolineairty detected amongsst BMI and Waist Circumference, only slightly VIF > 5 but VIF<6
+summary(logit_fit_loocv_smote_2)
+
+#===============================================================================
+# Outliers
+#===============================================================================
+plot(logit_fit_loocv_smote_2$finalModel, which = 4, id.n=3) # Cooks distance
+
+library(broom) # Required for augmnet
+model_outliers <- augment(logit_fit_loocv_smote_2$finalModel) %>% 
+  mutate(index = 1:n())
+
+
+residual_plot <- ggplot(model_outliers, aes(index, .std.resid)) + 
+  geom_point(aes(color = .outcome), alpha = .5) +
+  theme_bw() # Visually looks like all less then 3
+
+model_outliers <- model_outliers %>% 
+  filter(abs(.std.resid) > 3)
+
+nrow(model_outliers) # We have 7 observations which we could consider an outlier
+max(abs(model_outliers$.std.resid)) # Max .abs std residual is 4.31
+
+#===============================================================================
+# Linearity
+# Issue due to:
+# Because of SMOTE method we have extra values included - as we have synthetically 
+# inserted these values. My skills are unable to remove these from the
+# logit_fit_loocv_smote_2$finalModel, instead we will use logit_fit_loocv 
+# just to look at linearity 
+#===============================================================================
+library(tidyverse)
+
+probabilities <- predict(logit_fit_loocv$finalModel, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, "MetSyn", "No MetSyn")
+
+# Select only numeric predictors
+dt <- train_logit_2 %>% 
+  dplyr::select_if(is.numeric)
+predictors <- colnames(dt)
+dt <- dt %>% 
+  mutate(logit = log(probabilities / (1 - probabilities))) %>%
+  gather(key = "predictors", value = "predictor_value", -logit)
+
+
+linear_plot <- ggplot(dt, aes(logit, predictor_value)) +
+  geom_point(size = .5, alpha = .5) +
+  geom_smooth(method = "loess") +
+  theme_bw() +
+  facet_wrap(~predictors, scales = "free_y")
+
+# We observe that linearity assumption is most likely violated in our model
+library(gridExtra)
+grid.arrange(linear_plot, residual_plot, nrow=1)
 
 #===============================================================================
 # PCA UNSUPERVISED 
