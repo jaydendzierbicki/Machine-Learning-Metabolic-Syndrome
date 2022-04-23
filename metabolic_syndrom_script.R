@@ -292,9 +292,7 @@ chisq.test(y= metabolic_df_sig$MetabolicSyndrome, x=metabolic_df_sig$Race) # P <
 
 
 #===============================================================================
-#
 # SUPERVISED LEARNING 
-#
 # Naive Bayes - 4 different models
 #===============================================================================
 
@@ -587,6 +585,11 @@ auc(roc_loocv_smote)
 
 #===============================================================================
 # Logit assumption testing
+# 3 tests:
+# Multicollinearity
+# linearity
+# outliers
+#273
 #===============================================================================
 
 #===============================================================================
@@ -684,6 +687,96 @@ linear_plot <- ggplot(dt, aes(logit, predictor_value)) +
 # We observe that linearity assumption is most likely violated in our model
 library(gridExtra)
 grid.arrange(linear_plot, residual_plot, nrow=1)
+
+
+
+
+
+#===============================================================================
+# Unsupervised learning:
+# Goal: 2 models, 1 with PCA applied and 1 without PCA applied
+#===============================================================================
+set.seed(2343) 
+
+ncol(metabolic_df_unsupervised) # 9 features, reduction in previous model due to continous assumption
+
+metabolic_df_unsupervised_diagnosis <- as.data.frame(metabolic_df_unsupervised$MetabolicSyndrome) # Retain to test model at later stage
+
+metabolic_df_unsupervised_model_1 <- metabolic_df_unsupervised %>% 
+  select(-MetabolicSyndrome) # Unblabel our model 
+
+metabolic_df_unsupervised_model_1_scaled <- scale( ) # Scale data, but retain orginal
+
+k2 <- kmeans(metabolic_df_unsupervised_model_1_scaled, centers = 2, nstart = 25)
+k2$size
+cluster <- as.data.frame(k2$cluster)
+
+library(factoextra)
+fviz_cluster(k2, data = metabolic_df_unsupervised_model_1_scaled) # Graphs first 2 PC, observe clear separation
+fviz_nbclust(metabolic_df_unsupervised_model_1_scaled, kmeans, method = "silhouette") # Observe k=2 as recomended - based on domain knoweldge
+
+# Interpret our results
+library(data.table)
+dt_ext <- as.data.table(cbind(metabolic_df_unsupervised_model_1, cluster = k2$cluster))
+dt_ext[, lapply(.SD, mean), by = cluster]
+
+bind_metabolic_df_unsupervised_model_1_scaled <- cbind(metabolic_df_unsupervised_diagnosis, cluster) # Allows us to see cluster pred vs actual diagnosis 
+(cont_table <- table(bind_metabolic_df_unsupervised_model_1_scaled))
+accuracy_model_1 <- sum(diag(cont_table)/sum(cont_table)) 
+(summary_stats_model <- dt_ext[, lapply(.SD, mean), by = cluster])
+
+#===============================================================================
+# Disscusion:
+# Based on contingency table above - we assume that cluster 1 is MetSyn, whilst cluster 2 is
+# No MetSyn, this produces an accuracy of 79%
+# We are also able to obtain some summary stats, we observe people in cluster 1 have the\
+# following charactersitics:
+# Higher age, lower income, higher waist Cir, higher BMI, higher UrAlAbrc, higher UricAcid
+# higher blood glucose, lower HDL and higher Triglycerdies - this is consisent with the litrature
+#===============================================================================
+
+# Question: Can we improve our model via the application of PCA first, then apply k-means clustering
+# NOTE: With this method we will loose descriptive infromation such as summary stats, though
+# we can still produce accuracy etc
+
+pca_model <- prcomp(metabolic_df_unsupervised_model_1_scaled, scale = F) # Already scaled
+fviz_eig(pca_model) # Select first 3 PCA values
+pca_model <- pca_model$x[,1:3] # select PC1, PC2, PC3
+
+k2_pc <- kmeans(pca_model, centers = 2, nstart = 25)
+pc_cluster <- as.data.frame(k2_pc$cluster)
+bind_pc <- cbind(metabolic_df_unsupervised_diagnosis, pc_cluster)
+(cont_table_pc <- table(bind_pc))
+(accuracy_model_2 <- sum(diag(cont_table_pc)/sum(cont_table_pc))) # Slight improvment by 0.001 essentially 
+
+
+#===============================================================================
+# Disscusion
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #===============================================================================
 # PCA UNSUPERVISED 
