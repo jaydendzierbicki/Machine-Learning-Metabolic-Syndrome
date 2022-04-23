@@ -722,7 +722,7 @@ dt_ext[, lapply(.SD, mean), by = cluster]
 
 bind_metabolic_df_unsupervised_model_1_scaled <- cbind(metabolic_df_unsupervised_diagnosis, cluster) # Allows us to see cluster pred vs actual diagnosis 
 (cont_table <- table(bind_metabolic_df_unsupervised_model_1_scaled))
-accuracy_model_1 <- sum(diag(cont_table)/sum(cont_table)) 
+accuracy_model_1 <- sum(diag(cont_table)/sum(cont_table))  # Accuracy 0.7946679
 (summary_stats_model <- dt_ext[, lapply(.SD, mean), by = cluster])
 
 #===============================================================================
@@ -740,21 +740,47 @@ accuracy_model_1 <- sum(diag(cont_table)/sum(cont_table))
 # we can still produce accuracy etc
 
 pca_model <- prcomp(metabolic_df_unsupervised_model_1_scaled, scale = F) # Already scaled
-fviz_eig(pca_model) # Select first 3 PCA values
+summary(pca_model) # approx 80% var explained by first  5 PC 
+PVE_model <- round((PVE_model <- (pca_model$sdev^2)/sum(pca_model$sdev^2)),2) # Round our variance
+
+# Shows prop of variance explained by each PCA
+par(mfrow = c(1,2))
+plot(PVE_model, xlab = "Principal Component", ylab = "Prop of variance Explained", type = "b", ylim = c(0,1))
+
+# Shows prop of variance explained cumualaivte of each PCA as we go through list
+plot(cumsum(PVE_model), xlab = "Principal component", ylab = "cummulative prop of variance Explained", type = "b")
+par(mfrow = c(1,1)) # Reset
+psych::pairs.panels(pca_model$x)
+biplot(pca_model, scale = 0, cex = .5, col = c("grey", "deeppink3")) # Make observations grey for ease read
+?biplot
+
+# Elbow method selecting number PC to use
+fviz_eig(pca_model) # select first 2/3 PC values based on elbow
+
+library(pca3d)
+diagnosis_group <- as.factor(metabolic_df_unsupervised$MetabolicSyndrome) # For 3d plot below
+pca3d(pca_model, group = diagnosis_group, legend = "topleft") # 3d graph - can see some clear seperation, model may struggle with middle values
+pca2d(pca_model, group = diagnosis_group, title = "d", legend = "topleft")
+
+# Look at roation
+loading_pc1 <- pca_model$rotation[,1]
+loading_pc2 <- pca_model$rotation[,2]
+loading_pc3 <- pca_model$rotation[,3]
+loading_pc1_abs <- abs(loading_pc1)
+loading_pc2_abs <- abs(loading_pc2)
+loading_pc3_abs <- abs(loading_pc3)
+print(head(sort(loading_pc1_abs, decreasing = T)) ) 
+print(head(sort(loading_pc2_abs, decreasing = T)) ) 
+print(head(sort(loading_pc3_abs, decreasing = T)) ) 
+
+
 pca_model <- pca_model$x[,1:3] # select PC1, PC2, PC3
 
 k2_pc <- kmeans(pca_model, centers = 2, nstart = 25)
 pc_cluster <- as.data.frame(k2_pc$cluster)
-bind_pc <- cbind(metabolic_df_unsupervised_diagnosis, pc_cluster)
+bind_pc <- cbind( metabolic_df_unsupervised_diagnosis, pc_cluster)
 (cont_table_pc <- table(bind_pc))
-(accuracy_model_2 <- sum(diag(cont_table_pc)/sum(cont_table_pc))) # Slight improvment by 0.001 essentially 
-
-
-#===============================================================================
-# Disscusion
-
-
-
+(accuracy_model_2 <- sum(diag(cont_table_pc)/sum(cont_table_pc))) # Accuracy 0.795136 - minor improvement with PCA applied
 
 
 
