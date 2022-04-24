@@ -778,6 +778,8 @@ pca_model <- pca_model$x[,1:3] # select PC1, PC2, PC3
 
 k2_pc <- kmeans(pca_model, centers = 2, nstart = 25)
 pc_cluster <- as.data.frame(k2_pc$cluster)
+dt_ext_2 <- as.data.table(cbind(metabolic_df_unsupervised_model_1, cluster = k2_pc$cluster))
+dt_ext_2[, lapply(.SD, mean), by = cluster]
 bind_pc <- cbind( metabolic_df_unsupervised_diagnosis, pc_cluster)
 (cont_table_pc <- table(bind_pc))
 (accuracy_model_2 <- sum(diag(cont_table_pc)/sum(cont_table_pc))) # Accuracy 0.795136 - minor improvement with PCA applied
