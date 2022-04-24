@@ -790,22 +790,6 @@ bind_pc <- cbind( metabolic_df_unsupervised_diagnosis, pc_cluster)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #===============================================================================
 # PCA UNSUPERVISED 
 # 
